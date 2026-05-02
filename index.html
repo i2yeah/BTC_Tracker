@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BTC 投资收益追踪</title>
+  <meta name="description" content="追踪 BTC 季度末收盘价，实时计算你的投资盈亏收益率曲线" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e1a;
+      --surface: #111827;
+      --surface2: #1a2235;
+      --border: #1e2d45;
+      --accent: #f7931a;
+      --accent2: #ff6b35;
+      --green: #22c55e;
+      --red: #ef4444;
+      --text: #e2e8f0;
+      --muted: #64748b;
+      --radius: 16px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── 背景装饰 ── */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -200px; left: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(247,147,26,.15) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -200px; right: -200px;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(34,197,94,.1) 0%, transparent 70%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* ── Header ── */
+    header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .logo-icon {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+      box-shadow: 0 0 30px rgba(247,147,26,.4);
+    }
+    h1 {
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      font-weight: 700;
+      background: linear-gradient(135deg, #f7931a, #ff6b35, #ffd700);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin-top: 8px;
+      font-size: .95rem;
+    }
+
+    /* ── 输入卡片 ── */
+    .input-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      margin-bottom: 32px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      align-items: flex-end;
+      backdrop-filter: blur(10px);
+    }
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+      min-width: 200px;
+    }
+    label {
+      font-size: .8rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    input[type="number"], input[type="date"] {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 12px 16px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+      width: 100%;
+    }
+    input[type="number"]:focus, input[type="date"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(247,147,26,.15);
+    }
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(.6);
+    }
+
+    .btn {
+      padding: 13px 32px;
+      border-radius: 10px;
+      border: none;
+      font-family: inherit;
+      font-size: .95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+      white-space: nowrap;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      box-shadow: 0 4px 20px rgba(247,147,26,.35);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 30px rgba(247,147,26,.5);
+    }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled {
+      opacity: .5; cursor: not-allowed; transform: none;
+    }
+
+    /* ── 统计卡片 ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+      transition: transform .2s, border-color .2s;
+    }
+    .stat-card:hover { transform: translateY(-3px); border-color: var(--accent); }
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+    }
+    .stat-label {
+      font-size: .78rem;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 8px;
+    }
+    .stat-value {
+      font-size: 1.6rem;
+      font-weight: 700;
+    }
+    .stat-value.positive { color: var(--green); }
+    .stat-value.negative { color: var(--red); }
+    .stat-value.neutral  { color: var(--accent); }
+
+    /* ── 图表卡片 ── */
+    .chart-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      margin-bottom: 32px;
+    }
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .chart-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    .badge {
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: .75rem;
+      font-weight: 600;
+    }
+    .badge-live {
+      background: rgba(34,197,94,.15);
+      color: var(--green);
+      border: 1px solid rgba(34,197,94,.3);
+      display: flex; align-items: center; gap: 6px;
+    }
+    .badge-live::before {
+      content: '';
+      width: 7px; height: 7px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: .3; }
+    }
+
+    .chart-wrap { position: relative; height: 380px; }
+
+    /* ── 数据表格 ── */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .table-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th {
+      padding: 12px 20px;
+      text-align: left;
+      font-size: .75rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      background: var(--surface2);
+    }
+    td {
+      padding: 14px 20px;
+      font-size: .9rem;
+      border-top: 1px solid var(--border);
+    }
+    tr:hover td { background: rgba(255,255,255,.02); }
+    .pos { color: var(--green); font-weight: 600; }
+    .neg { color: var(--red);   font-weight: 600; }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: .72rem;
+      font-weight: 600;
+      background: rgba(247,147,26,.15);
+      color: var(--accent);
+    }
+
+    /* ── Loading / 状态 ── */
+    #status-msg {
+      text-align: center;
+      padding: 60px 0;
+      color: var(--muted);
+      display: none;
+    }
+    .spinner {
+      width: 36px; height: 36px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      margin: 0 auto 16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #error-msg {
+      background: rgba(239,68,68,.1);
+      border: 1px solid rgba(239,68,68,.3);
+      color: var(--red);
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 24px;
+      display: none;
+      font-size: .9rem;
+    }
+
+    .hidden { display: none !important; }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: .8rem;
+      margin-top: 48px;
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">₿</div>
+    </div>
+    <h1>BTC 投资收益追踪</h1>
+    <p class="subtitle">季度末月收盘价 · 实时盈亏率曲线 · 数据来源 CoinGecko</p>
+  </header>
+
+  <!-- 输入区 -->
+  <div class="input-card">
+    <div class="field">
+      <label>买入价格 (USD)</label>
+      <input type="number" id="buy-price" placeholder="例：45000" min="1" step="any" />
+    </div>
+    <div class="field">
+      <label>买入日期（可选，用于标注）</label>
+      <input type="date" id="buy-date" />
+    </div>
+    <div class="field" style="flex:0">
+      <label>&nbsp;</label>
+      <button class="btn btn-primary" id="fetch-btn" onclick="loadData()">🚀 加载数据</button>
+    </div>
+  </div>
+
+  <!-- 错误提示 -->
+  <div id="error-msg"></div>
+
+  <!-- Loading -->
+  <div id="status-msg">
+    <div class="spinner"></div>
+    <p id="status-text">正在从 CoinGecko 拉取历史价格…</p>
+  </div>
+
+  <!-- 统计卡片 -->
+  <div class="stats-grid hidden" id="stats-section">
+    <div class="stat-card">
+      <div class="stat-label">当前 BTC 价格</div>
+      <div class="stat-value neutral" id="stat-current">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">买入价格</div>
+      <div class="stat-value neutral" id="stat-buy">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">当前盈亏率</div>
+      <div class="stat-value" id="stat-pnl">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">最高收益率</div>
+      <div class="stat-value positive" id="stat-max">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">最低收益率</div>
+      <div class="stat-value" id="stat-min">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">采集季度数</div>
+      <div class="stat-value neutral" id="stat-count">—</div>
+    </div>
+  </div>
+
+  <!-- 图表 -->
+  <div class="chart-card hidden" id="chart-section">
+    <div class="chart-header">
+      <span class="chart-title">📈 季度末收益率曲线</span>
+      <span class="badge badge-live">实时数据</span>
+    </div>
+    <div class="chart-wrap">
+      <canvas id="myChart"></canvas>
+    </div>
+  </div>
+
+  <!-- 数据表格 -->
+  <div class="table-card hidden" id="table-section">
+    <div class="table-header">📋 季度末历史数据明细</div>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr>
+            <th>季度</th>
+            <th>日期</th>
+            <th>月末收盘价 (USD)</th>
+            <th>盈亏率</th>
+            <th>盈亏状态</th>
+          </tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <footer>
+    <p>价格数据来源：<a href="https://www.coingecko.com" target="_blank">CoinGecko</a> 免费 API &nbsp;·&nbsp; 仅供参考，不构成投资建议</p>
+  </footer>
+</div>
+
+<script>
+  let chartInstance = null;
+
+  // 季度最后一个月：3月、6月、9月、12月
+  function isQuarterEndMonth(month) {
+    return [3, 6, 9, 12].includes(month);
+  }
+
+  // 获取某月最后一天
+  function lastDayOfMonth(year, month) {
+    return new Date(year, month, 0).getDate();
+  }
+
+  function formatUSD(n) {
+    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  }
+
+  function formatPct(n) {
+    const sign = n >= 0 ? '+' : '';
+    return sign + n.toFixed(2) + '%';
+  }
+
+  function getQuarterLabel(year, month) {
+    const q = Math.ceil(month / 3);
+    return `${year} Q${q}`;
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = '❌ ' + msg;
+    el.style.display = 'block';
+  }
+  function hideError() {
+    document.getElementById('error-msg').style.display = 'none';
+  }
+
+  function setLoading(on, text = '正在从 CoinGecko 拉取历史价格…') {
+    const el = document.getElementById('status-msg');
+    document.getElementById('status-text').textContent = text;
+    el.style.display = on ? 'block' : 'none';
+    document.getElementById('fetch-btn').disabled = on;
+  }
+
+  async function fetchMonthlyCloses() {
+    // CoinGecko /market_chart, 最大天数范围
+    // 用 max 拿全量日线数据，然后自己筛月末
+    const url = 'https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=max&interval=daily';
+    const res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+    if (!res.ok) throw new Error(`CoinGecko API 返回 ${res.status}，可能触发速率限制，请稍后重试`);
+    const data = await res.json();
+    // data.prices: [[timestamp_ms, price], ...]
+    return data.prices;
+  }
+
+  async function fetchCurrentPrice() {
+    const url = 'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd';
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.bitcoin?.usd ?? null;
+  }
+
+  function extractQuarterEndPrices(prices) {
+    // 按年月分组，取每月最后一天的最后一条数据
+    const byYearMonth = {};
+    for (const [ts, price] of prices) {
+      const d = new Date(ts);
+      const y = d.getUTCFullYear();
+      const m = d.getUTCMonth() + 1;
+      const key = `${y}-${String(m).padStart(2,'0')}`;
+      byYearMonth[key] = { year: y, month: m, price, date: d };
+    }
+
+    const result = [];
+    for (const key of Object.keys(byYearMonth).sort()) {
+      const { year, month, price, date } = byYearMonth[key];
+      if (isQuarterEndMonth(month)) {
+        const ld = lastDayOfMonth(year, month);
+        const label = `${year}-${String(month).padStart(2,'0')}-${ld}`;
+        result.push({ year, month, price, dateLabel: label, quarter: getQuarterLabel(year, month) });
+      }
+    }
+    return result;
+  }
+
+  function renderChart(labels, pnlData, buyDate) {
+    if (chartInstance) {
+      chartInstance.destroy();
+      chartInstance = null;
+    }
+    const ctx = document.getElementById('myChart').getContext('2d');
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, 380);
+    gradient.addColorStop(0, 'rgba(247,147,26,0.35)');
+    gradient.addColorStop(1, 'rgba(247,147,26,0.02)');
+
+    const pointColors = pnlData.map(v => v >= 0 ? '#22c55e' : '#ef4444');
+
+    const annotations = {};
+    annotations.zeroLine = {
+      type: 'line', yMin: 0, yMax: 0,
+      borderColor: 'rgba(255,255,255,0.2)',
+      borderWidth: 1, borderDash: [6, 4],
+      label: { content: '盈亏平衡线', display: true, position: 'start',
+               color: 'rgba(255,255,255,0.4)', font: { size: 11 }, yAdjust: -10 }
+    };
+
+    chartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{
+          label: '盈亏率 (%)',
+          data: pnlData,
+          borderColor: '#f7931a',
+          borderWidth: 2.5,
+          backgroundColor: gradient,
+          fill: true,
+          tension: 0.4,
+          pointBackgroundColor: pointColors,
+          pointBorderColor: '#0a0e1a',
+          pointBorderWidth: 2,
+          pointRadius: 5,
+          pointHoverRadius: 8,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1a2235',
+            borderColor: '#1e2d45',
+            borderWidth: 1,
+            titleColor: '#e2e8f0',
+            bodyColor: '#94a3b8',
+            padding: 14,
+            callbacks: {
+              label: ctx => {
+                const v = ctx.parsed.y;
+                return ` ${v >= 0 ? '盈利' : '亏损'} ${formatPct(v)}`;
+              }
+            }
+          },
+          annotation: { annotations }
+        },
+        scales: {
+          x: {
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: { color: '#64748b', font: { size: 11 }, maxRotation: 45 }
+          },
+          y: {
+            grid: { color: 'rgba(255,255,255,0.05)' },
+            ticks: {
+              color: '#64748b',
+              font: { size: 11 },
+              callback: v => formatPct(v)
+            }
+          }
+        },
+        interaction: { intersect: false, mode: 'index' }
+      }
+    });
+  }
+
+  function renderTable(rows, buyPrice) {
+    const tbody = document.getElementById('table-body');
+    tbody.innerHTML = '';
+    for (const r of rows) {
+      const pnl = (r.price - buyPrice) / buyPrice * 100;
+      const isPos = pnl >= 0;
+      tbody.insertAdjacentHTML('beforeend', `
+        <tr>
+          <td><span class="tag">${r.quarter}</span></td>
+          <td>${r.dateLabel}</td>
+          <td>${formatUSD(r.price)}</td>
+          <td class="${isPos ? 'pos' : 'neg'}">${formatPct(pnl)}</td>
+          <td>${isPos ? '✅ 盈利' : '❌ 亏损'}</td>
+        </tr>
+      `);
+    }
+  }
+
+  function renderStats(rows, buyPrice, currentPrice) {
+    const pnls = rows.map(r => (r.price - buyPrice) / buyPrice * 100);
+    const currentPnl = currentPrice ? (currentPrice - buyPrice) / buyPrice * 100 : null;
+
+    document.getElementById('stat-current').textContent = currentPrice ? formatUSD(currentPrice) : '—';
+    document.getElementById('stat-buy').textContent = formatUSD(buyPrice);
+
+    const pnlEl = document.getElementById('stat-pnl');
+    if (currentPnl !== null) {
+      pnlEl.textContent = formatPct(currentPnl);
+      pnlEl.className = 'stat-value ' + (currentPnl >= 0 ? 'positive' : 'negative');
+    }
+
+    const maxPnl = Math.max(...pnls);
+    const minPnl = Math.min(...pnls);
+    document.getElementById('stat-max').textContent = formatPct(maxPnl);
+    const minEl = document.getElementById('stat-min');
+    minEl.textContent = formatPct(minPnl);
+    minEl.className = 'stat-value ' + (minPnl >= 0 ? 'positive' : 'negative');
+    document.getElementById('stat-count').textContent = rows.length + ' 个';
+  }
+
+  async function loadData() {
+    hideError();
+    const buyPriceInput = document.getElementById('buy-price').value;
+    if (!buyPriceInput || parseFloat(buyPriceInput) <= 0) {
+      showError('请先输入有效的买入价格');
+      return;
+    }
+    const buyPrice = parseFloat(buyPriceInput);
+
+    // 隐藏旧结果
+    ['stats-section','chart-section','table-section'].forEach(id =>
+      document.getElementById(id).classList.add('hidden')
+    );
+
+    setLoading(true, '正在从 CoinGecko 拉取历史价格…');
+
+    try {
+      const [prices, currentPrice] = await Promise.all([
+        fetchMonthlyCloses(),
+        fetchCurrentPrice()
+      ]);
+
+      setLoading(true, '正在处理数据…');
+
+      const rows = extractQuarterEndPrices(prices);
+      if (rows.length === 0) throw new Error('未能解析到有效的季度末数据');
+
+      const labels = rows.map(r => r.quarter);
+      const pnlData = rows.map(r => parseFloat(((r.price - buyPrice) / buyPrice * 100).toFixed(2)));
+
+      renderStats(rows, buyPrice, currentPrice);
+      renderChart(labels, pnlData);
+      renderTable(rows, buyPrice);
+
+      ['stats-section','chart-section','table-section'].forEach(id =>
+        document.getElementById(id).classList.remove('hidden')
+      );
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // 按 Enter 也触发
+  document.getElementById('buy-price').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadData();
+  });
+
+  // 本地存储买入价
+  window.addEventListener('load', () => {
+    const saved = localStorage.getItem('btc_buy_price');
+    if (saved) document.getElementById('buy-price').value = saved;
+    const savedDate = localStorage.getItem('btc_buy_date');
+    if (savedDate) document.getElementById('buy-date').value = savedDate;
+  });
+  document.getElementById('buy-price').addEventListener('change', e => {
+    localStorage.setItem('btc_buy_price', e.target.value);
+  });
+  document.getElementById('buy-date').addEventListener('change', e => {
+    localStorage.setItem('btc_buy_date', e.target.value);
+  });
+</script>
+</body>
+</html>
